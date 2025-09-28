@@ -260,6 +260,16 @@
     const sign = (n < 0 || negZero) ? '-' : '';
     return sign + Math.abs(n).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2,maximumFractionDigits:2});
   };
+  const EXPENSE_TYPES = [
+    'PAGAMENTO',
+    'PAGAMENTO_EFETUADO',
+    'COMPRA_DEBITO',
+    'PIX_ENVIADO_CP',
+    'PIX_ENVIADO_NOCP',
+    'ROTATIVO'
+  ];
+  const normalizeAmount = (type, amount) =>
+    (EXPENSE_TYPES.includes(type) && amount > 0 ? -amount : amount);
   const caps = (s)=> (s||'').toUpperCase().trim();
   const trunc = (s, max=44)=> (s||'').length>max ? (s||'').slice(0,max).trim() : (s||'');
   const todayISO = ()=> new Date().toISOString().slice(0,10);
@@ -273,6 +283,7 @@
 
   function addEntry(e){
     if(!e.id) e.id = genId();
+    e.amount = normalizeAmount(e.type, Number(e.amount||0));
     const d = ensureDay(e.date);
     d.entries.push(e);
   }
@@ -403,7 +414,8 @@
   $('btnAdd').addEventListener('click', ()=>{
     const date = $('txDate').value || todayISO();
     const type = $('txType').value;
-    const amount = parseFloat($('txAmount').value||'0');
+    let amount = parseFloat($('txAmount').value||'0');
+    amount = normalizeAmount(type, amount);
     const ref = $('txRef').value.trim();
     const name = $('txName').value.trim();
     const obs  = $('txObs').value.trim();
@@ -482,7 +494,8 @@
     if(!found) return;
 
     const type = $('editType').value;
-    const amount = parseFloat($('editAmount').value||'0');
+    let amount = parseFloat($('editAmount').value||'0');
+    amount = normalizeAmount(type, amount);
     const date = $('editDate').value || found.entry.date;
 
     const next = {
