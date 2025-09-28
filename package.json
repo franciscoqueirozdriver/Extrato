@@ -1,0 +1,19 @@
+{
+  "name": "extrato-gen-inter",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/cli.js --scenario scenarios/inter-demo.yml --out build/extrato.txt",
+    "dev": "tsx src/cli.ts --scenario scenarios/inter-demo.yml --out build/extrato.txt",
+    "test:regex": "tsx src/tests/regex-check.ts"
+  },
+  "dependencies": {
+    "yaml": "^2.4.5"
+  },
+  "devDependencies": {
+    "@types/node": "^22.5.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.2"
+  }
+}

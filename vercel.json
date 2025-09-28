@@ -1,0 +1,4 @@
+{
+  "buildCommand": "npm run build && node dist/cli.js --scenario scenarios/inter-demo.yml --out public/extrato.txt",
+  "outputDirectory": "public"
+}

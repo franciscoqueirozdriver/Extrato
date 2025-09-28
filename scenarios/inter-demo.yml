@@ -1,0 +1,55 @@
+# (Baseado nos padrões que você me passou; pode colar o YAML que montamos antes e/ou este de exemplo.)
+
+version: 3
+bank: INTER
+saldo_total:
+  total: 104.90
+  disponivel: 104.90
+  bloqueado: 0.00
+
+days:
+  - date: 2024-08-06
+    entries:
+      - type: CASHBACK
+        freeText: "Oster - 158240002381002-01"
+        amount: 35.99
+        balanceAfter: 80.20
+    saldo_dia: 80.20
+
+  - date: 2024-08-07
+    entries:
+      - type: PIX_ENVIADO_CP
+        cpCode: "00000000"
+        counterparty: "PHD PACE HOSPITAL LTDA"
+        amount: -15.00
+        balanceAfter: 65.20
+      - type: PIX_RECEBIDO_NOCP
+        phonePrefix: "00019"
+        phone: "0127263594"
+        counterparty: "MARILDA CRUZ"
+        amount: 54.90
+        balanceAfter: 120.10
+      - type: ROTATIVO
+        city: "BH"
+        amount: -4.95
+        balanceAfter: 115.15
+    saldo_dia: 115.15
+
+  - date: 2024-09-22
+    entries:
+      - type: COMPRA_DEBITO
+        freeText: "No estabelecimento BITTS ACAI BELO HORIZONT BRA"
+        amount: -146.30
+        balanceAfter: -46.30
+      - type: PIX_RECEBIDO_CP
+        cpCode: "18236120"
+        counterparty: "Alessandra Alves de Brito"
+        amount: 1.30
+        balanceAfter: -45.00
+      - type: PIX_RECEBIDO_CP
+        cpCode: "18236120"
+        counterparty: "Alessandra Alves de Brito"
+        amount: 45.00
+        balanceAfter: 0.00
+    saldo_dia: 0.00
+
