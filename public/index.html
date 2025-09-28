@@ -62,6 +62,7 @@
       <div class="stack">
         <button class="btn" id="btnLoadDemo">Carregar demo</button>
         <button class="btn" id="btnClear">Limpar</button>
+        <button class="btn" id="btnExportPdf">Exportar PDF</button>
         <button class="btn primary" id="btnExport">Exportar TXT</button>
       </div>
     </div>
@@ -381,6 +382,13 @@
     a.click();
     URL.revokeObjectURL(a.href);
   });
+
+  const pdfBtn = $('btnExportPdf');
+  if (pdfBtn) {
+    pdfBtn.addEventListener('click', ()=>{
+      window.open('/extrato.pdf', '_blank', 'noopener');
+    });
+  }
 
   // Demo atualizada
   $('btnLoadDemo').addEventListener('click', ()=>{
