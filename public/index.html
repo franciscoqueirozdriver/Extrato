@@ -38,6 +38,13 @@
     .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
     .btn.ghost{background:transparent}
     .stack{display:flex;gap:8px;flex-wrap:wrap}
+    .btn.sm{padding:6px 8px;border-radius:8px;font-size:12px}
+    .actions{display:flex;gap:6px;align-items:center;margin-left:8px}
+    .line .desc-wrap{display:flex;align-items:center;gap:8px;flex:1}
+    .badge{font:11px;padding:2px 6px;border:1px solid var(--line);border-radius:6px;color:var(--muted)}
+    .modal{position:fixed;inset:0;background:rgba(0,0,0,.45);display:none;align-items:center;justify-content:center;padding:20px;z-index:20}
+    .modal.active{display:flex}
+    .modal .box{background:#fff;color:var(--ink);padding:18px;border-radius:12px;min-width:320px;max-width:720px;width:100%;box-shadow:0 12px 32px rgba(0,0,0,.22)}
     /* Extrato */
     .statement{padding:16px}
     .statement .day{margin:6px 0 18px}
@@ -186,12 +193,65 @@
     <div style="height:24px"></div>
   </div>
 
+<!-- Modal de edição -->
+<div class="modal" id="editModal" aria-hidden="true">
+  <div class="box">
+    <div class="row" style="justify-content:space-between;align-items:center">
+      <h2 style="margin:0">Editar lançamento</h2>
+      <button class="btn" id="btnEditClose">Fechar</button>
+    </div>
+
+    <div class="grid cols-3" style="margin-top:10px">
+      <div><label>Data</label><input id="editDate" type="date" /></div>
+      <div>
+        <label>Tipo</label>
+        <select id="editType">
+          <option value="PIX_ENVIADO_CP">Pix enviado (Cp)</option>
+          <option value="PIX_RECEBIDO_CP">Pix recebido (Cp)</option>
+          <option value="PIX_ENVIADO_NOCP">Pix enviado (telefone)</option>
+          <option value="PIX_RECEBIDO_NOCP">Pix recebido (telefone)</option>
+          <option value="PAGAMENTO">Pagamento</option>
+          <option value="PAGAMENTO_EFETUADO">Pagamento efetuado (desc.)</option>
+          <option value="ROTATIVO">Rotativo Digital</option>
+          <option value="CASHBACK">Cashback</option>
+          <option value="COMPRA_DEBITO">Compra no débito</option>
+        </select>
+      </div>
+      <div><label>Valor (R$)</label><input id="editAmount" type="number" step="0.01" /></div>
+    </div>
+
+    <div class="grid cols-3" style="margin-top:10px">
+      <div><label>CP Code / Prefixo</label><input id="editRef" type="text" placeholder='Ex.: 18236120 ou "00019 0127263594"'/></div>
+      <div><label>Contraparte / Cidade / Texto</label><input id="editName" type="text"/></div>
+      <div><label>Obs (opcional)</label><input id="editObs" type="text"/></div>
+    </div>
+
+    <div class="row" style="margin-top:12px">
+      <button class="btn primary" id="btnEditSave">Salvar alterações</button>
+      <span class="muted" id="editHint"></span>
+    </div>
+  </div>
+</div>
+
 <script>
 (function(){
   const state = {
     days: [],  // [{date:'YYYY-MM-DD', entries:[{...}], saldoDia:number}]
     lastDate: null
   };
+
+  let _id = 1;
+  const genId = () => String(_id++);
+
+  function findEntryById(id){
+    for (const day of state.days){
+      const idx = day.entries.findIndex(e => e.id === id);
+      if (idx >= 0) {
+        return { day, idx, entry: day.entries[idx] };
+      }
+    }
+    return null;
+  }
 
   const $ = (id)=>document.getElementById(id);
   const fmtBRL = (v)=>{
@@ -212,6 +272,7 @@
   }
 
   function addEntry(e){
+    if(!e.id) e.id = genId();
     const d = ensureDay(e.date);
     d.entries.push(e);
   }
@@ -246,7 +307,7 @@
       day.entries.forEach(tx=>{
         global += Number(tx.amount || 0);
         const desc = renderDesc(tx);
-        appendLine(dayFrag, {desc, vals:[fmtBRL(tx.amount), fmtBRL(global)]});
+        appendLine(dayFrag, {desc, vals:[fmtBRL(Number(tx.amount || 0)), fmtBRL(global)], id: tx.id, type: tx.type});
       });
       const header = document.createElement('div');
       header.className = 'header-dia';
@@ -261,13 +322,13 @@
   function renderDesc(tx){
     switch(tx.type){
       case 'PIX_ENVIADO_CP':
-        return `Pix enviado: "Cp :${tx.cp}-${caps(trunc(tx.name))}"`;
+        return `Pix enviado: "Cp :${tx.cp || ''}-${caps(trunc(tx.name))}"`;
       case 'PIX_RECEBIDO_CP':
-        return `Pix recebido: "Cp :${tx.cp}-${caps(trunc(tx.name))}"`;
+        return `Pix recebido: "Cp :${tx.cp || ''}-${caps(trunc(tx.name))}"`;
       case 'PIX_ENVIADO_NOCP':
-        return `Pix enviado: "${tx.phonePrefix} ${tx.phone} ${caps(trunc(tx.name))}"`;
+        return `Pix enviado: "${tx.phonePrefix || ''} ${tx.phone || ''} ${caps(trunc(tx.name))}"`;
       case 'PIX_RECEBIDO_NOCP':
-        return `Pix recebido: "${tx.phonePrefix} ${tx.phone} ${caps(trunc(tx.name))}"`;
+        return `Pix recebido: "${tx.phonePrefix || ''} ${tx.phone || ''} ${caps(trunc(tx.name))}"`;
       case 'PAGAMENTO':
         return `Pagamento`;
       case 'PAGAMENTO_EFETUADO':
@@ -288,14 +349,55 @@
     }
   }
 
-  function appendLine(parent,{desc,vals=[]}){
+  function appendLine(parent,{desc,vals=[],id,type}){
     const row = document.createElement('div'); row.className='line';
+    if(id) row.dataset.id = id;
+    const wrap = document.createElement('div'); wrap.className='desc-wrap';
     const d = document.createElement('div');  d.className='desc'; d.textContent = desc;
+    wrap.appendChild(d);
+    if(id){
+      const actions = document.createElement('div'); actions.className='actions';
+      const badge = document.createElement('span'); badge.className='badge'; badge.textContent = String(type||'').toLowerCase().replace(/_/g,' ');
+      const bEdit = document.createElement('button'); bEdit.className='btn sm'; bEdit.textContent='Editar'; bEdit.dataset.action='edit';
+      const bDel  = document.createElement('button'); bDel.className='btn sm'; bDel.textContent='Excluir'; bDel.dataset.action='delete';
+      actions.appendChild(badge);
+      actions.appendChild(bEdit);
+      actions.appendChild(bDel);
+      wrap.appendChild(actions);
+    }
     const v = document.createElement('div');  v.className='vals';
     vals.forEach(x=>{ const s=document.createElement('span'); s.textContent=x; v.appendChild(s); });
-    row.appendChild(d); row.appendChild(v); parent.appendChild(row);
+    row.appendChild(wrap); row.appendChild(v); parent.appendChild(row);
   }
   function hr(){ const r=document.createElement('div'); r.className='hr'; return r; }
+
+  // Delegação de ações nas linhas do extrato
+  $('statement').addEventListener('click', (ev)=>{
+    const btn = ev.target.closest('button');
+    if(!btn) return;
+    const action = btn.dataset.action;
+    if(!action) return;
+    const line = btn.closest('.line');
+    const id = line?.dataset.id;
+    if(!id) return;
+
+    if(action === 'delete'){
+      if(confirm('Excluir este lançamento?')){
+        const found = findEntryById(id);
+        if(found){
+          found.day.entries.splice(found.idx,1);
+          if(found.day.entries.length === 0){
+            state.days = state.days.filter(d => d !== found.day);
+          }
+          render();
+        }
+      }
+    }
+
+    if(action === 'edit'){
+      openEditModal(id);
+    }
+  });
 
   // Ações
   $('btnAdd').addEventListener('click', ()=>{
@@ -332,6 +434,99 @@
     state.days = [];
     state.lastDate = null;
     $('statement').innerHTML='';
+    closeEditModal();
+  });
+
+  function fillEditForm(e){
+    $('editDate').value = e.date || '';
+    $('editType').value = e.type || 'PAGAMENTO';
+    $('editAmount').value = String(e.amount ?? 0);
+    if(e.type.includes('_CP')){
+      $('editRef').value = e.cp || '';
+    } else if(e.type.includes('_NOCP')){
+      $('editRef').value = `${e.phonePrefix||'00019'} ${e.phone||''}`.trim();
+    } else {
+      $('editRef').value = '';
+    }
+    $('editName').value = e.name || '';
+    $('editObs').value = e.obs || '';
+    $('editHint').textContent = `ID: ${e.id}`;
+  }
+
+  let _editingId = null;
+
+  function openEditModal(id){
+    const found = findEntryById(id);
+    if(!found) return;
+    _editingId = id;
+    fillEditForm(found.entry);
+    $('editModal').classList.add('active');
+    $('editModal').setAttribute('aria-hidden','false');
+  }
+
+  function closeEditModal(){
+    _editingId = null;
+    $('editModal').classList.remove('active');
+    $('editModal').setAttribute('aria-hidden','true');
+  }
+
+  $('btnEditClose').addEventListener('click', closeEditModal);
+  $('editModal').addEventListener('click', (ev)=>{
+    if(ev.target === ev.currentTarget){
+      closeEditModal();
+    }
+  });
+  $('btnEditSave').addEventListener('click', ()=>{
+    if(!_editingId) return;
+    const found = findEntryById(_editingId);
+    if(!found) return;
+
+    const type = $('editType').value;
+    const amount = parseFloat($('editAmount').value||'0');
+    const date = $('editDate').value || found.entry.date;
+
+    const next = {
+      ...found.entry,
+      date,
+      type,
+      amount,
+      name: $('editName').value.trim(),
+      obs: $('editObs').value.trim()
+    };
+
+    const ref = $('editRef').value.trim();
+    if(type.includes('_CP')){
+      next.cp = ref.replace(/\s+/g,'');
+      delete next.phonePrefix;
+      delete next.phone;
+    } else if(type.includes('_NOCP')){
+      const m = ref.match(/^(\d{5})\s+(\d{7,12})$/);
+      next.phonePrefix = m ? m[1] : '00019';
+      next.phone = m ? m[2] : ref.replace(/\s+/g,'');
+      delete next.cp;
+    } else if(type === 'ROTATIVO'){
+      if(!next.name) next.name = 'BH';
+      delete next.cp;
+      delete next.phonePrefix;
+      delete next.phone;
+    } else {
+      delete next.cp;
+      delete next.phonePrefix;
+      delete next.phone;
+    }
+
+    if(date !== found.day.date){
+      found.day.entries.splice(found.idx,1);
+      if(found.day.entries.length === 0){
+        state.days = state.days.filter(d => d !== found.day);
+      }
+      addEntry(next);
+    } else {
+      found.day.entries[found.idx] = next;
+    }
+
+    closeEditModal();
+    render();
   });
 
   // Export TXT
@@ -449,7 +644,24 @@
       </section>
     `;
 
-    const statementHTML = $('statement').innerHTML;
+    let global = parseFloat($('saldoInicial').value || '0') || 0;
+    const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    const dayBlocks = state.days
+      .slice()
+      .sort((a,b)=> a.date.localeCompare(b.date))
+      .map(day => {
+        const lines = day.entries
+          .slice()
+          .map(tx => {
+            global += Number(tx.amount || 0);
+            const desc = renderDesc(tx);
+            const safeDesc = String(desc).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+            return `<div class="line"><div class="desc">${safeDesc}</div><div class="vals"><span>${fmtBRL(Number(tx.amount || 0))}</span><span>${fmtBRL(global)}</span></div></div>`;
+          }).join('');
+        const d = new Date(day.date+'T12:00:00');
+        const header = `${d.getUTCDate()} de ${meses[d.getUTCMonth()]} de ${d.getUTCFullYear()} Saldo do dia: ${fmtBRL(global)}`;
+        return `<section class="day">${lines}<div class="header-dia">${header}</div></section>`;
+      }).join('');
 
     return `
       <!doctype html>
@@ -464,7 +676,7 @@
           </header>
           ${idBlock}
           ${saldoHeaderHTML()}
-          <main class="statement">${statementHTML}</main>
+          <main class="statement">${dayBlocks}</main>
         </div>
       </body></html>
     `;
@@ -475,8 +687,8 @@
       const html = buildHTMLFromCurrentState();
       const resp = await fetch('/api/pdf', {
         method: 'POST',
-        headers: { 'Content-Type': 'text/html; charset=utf-8' },
-        body: html
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ html })
       });
       if(!resp.ok){
         const errText = await resp.text();
@@ -527,6 +739,10 @@
   document.addEventListener('keydown', (e)=>{
     if(e.ctrlKey && e.key.toLowerCase()==='e'){ e.preventDefault(); $('btnExport').click(); }
     if(e.ctrlKey && e.key.toLowerCase()==='d'){ e.preventDefault(); $('btnLoadDemo').click(); }
+    if(e.key === 'Escape' && $('editModal').classList.contains('active')){
+      e.preventDefault();
+      closeEditModal();
+    }
   });
 
   render();

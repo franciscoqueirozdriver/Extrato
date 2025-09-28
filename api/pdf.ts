@@ -2,24 +2,51 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
 
+async function readRawBody(req: VercelRequest): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let data = '';
+    req.setEncoding('utf8');
+    req.on('data', chunk => {
+      data += chunk;
+    });
+    req.on('end', () => resolve(data));
+    req.on('error', reject);
+  });
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== 'POST') {
       return res.status(405).json({ error: 'Use POST com { html }' });
     }
 
-    const html: string = (req.body && (req.body as any).html) || (typeof req.body === 'string' ? (req.body as string) : '');
-    if (!html || typeof html !== 'string') {
+    const ctype = String(req.headers['content-type'] || '').toLowerCase();
+    let html = '';
+
+    if (ctype.includes('application/json')) {
+      const body = (req.body ?? {}) as any;
+      html = typeof body?.html === 'string' ? body.html : '';
+    } else if (ctype.includes('text/html') || ctype.includes('text/plain')) {
+      html = await readRawBody(req);
+    } else {
+      const body = (req.body ?? {}) as any;
+      if (typeof body?.html === 'string') {
+        html = body.html;
+      } else {
+        html = await readRawBody(req);
+      }
+    }
+
+    if (!html || typeof html !== 'string' || html.length < 20) {
       return res.status(400).json({ error: 'HTML ausente' });
     }
 
-    const isVercel = Boolean(process.env.VERCEL);
     const executablePath = await chromium.executablePath();
 
     const browser = await puppeteer.launch({
       args: chromium.args,
       defaultViewport: chromium.defaultViewport,
-      executablePath: isVercel ? executablePath : undefined,
+      executablePath,
       headless: chromium.headless
     });
 
@@ -37,9 +64,16 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', 'attachment; filename="extrato.pdf"');
     return res.status(200).send(Buffer.from(pdf));
-  } catch (error) {
-    console.error('PDF FAIL', error);
-    const message = error instanceof Error ? error.message : String(error);
-    return res.status(500).json({ error: 'Falha ao gerar PDF', detail: message });
+  } catch (err: any) {
+    console.error('PDF FAIL', err);
+    return res.status(500).json({ error: 'Falha ao gerar PDF', detail: String(err?.message || err) });
   }
 }
+
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '2mb'
+    }
+  }
+};
