@@ -1,4 +1,11 @@
 {
-  "buildCommand": "npm run build && node dist/cli.js --scenario scenarios/inter-demo.yml --out public/extrato.txt && npm run render:html && npm run render:pdf",
-  "outputDirectory": "public"
+  "buildCommand": "npm run build && node dist/cli.js --scenario scenarios/inter-demo.yml --out public/extrato.txt && npm run render:html",
+  "outputDirectory": "public",
+  "functions": {
+    "api/pdf.ts": {
+      "runtime": "nodejs20.x",
+      "memory": 1024,
+      "maxDuration": 60
+    }
+  }
 }

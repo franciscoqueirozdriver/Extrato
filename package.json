@@ -7,13 +7,12 @@
     "start": "node dist/cli.js --scenario scenarios/inter-demo.yml --out build/extrato.txt",
     "dev": "tsx src/cli.ts --scenario scenarios/inter-demo.yml --out build/extrato.txt",
     "test:regex": "tsx src/tests/regex-check.ts",
-    "render:html": "node dist/scripts/render-html.js --scenario scenarios/inter-demo.yml --out public/extrato.html",
-    "render:pdf": "node dist/scripts/render-pdf.js --html public/extrato.html --scenario scenarios/inter-demo.yml --out public/extrato.pdf"
+    "render:html": "node dist/scripts/render-html.js --scenario scenarios/inter-demo.yml --out public/extrato.html"
   },
   "dependencies": {
-    "yaml": "^2.4.5",
     "@sparticuz/chromium": "123.0.1",
-    "puppeteer-core": "23.4.0"
+    "puppeteer-core": "23.4.0",
+    "yaml": "^2.4.5"
   },
   "devDependencies": {
     "@types/node": "^22.5.0",

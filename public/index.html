@@ -62,8 +62,8 @@
       <div class="stack">
         <button class="btn" id="btnLoadDemo">Carregar demo</button>
         <button class="btn" id="btnClear">Limpar</button>
-        <button class="btn" id="btnExportPdf">Exportar PDF</button>
-        <button class="btn primary" id="btnExport">Exportar TXT</button>
+        <button class="btn primary" id="btnPdf">Baixar PDF</button>
+        <button class="btn" id="btnExport">Exportar TXT</button>
       </div>
     </div>
 
@@ -183,8 +183,6 @@
 
     <div style="height:18px"></div>
     <div class="muted">Atalhos: <span class="kbd">Ctrl+E</span> exporta TXT • <span class="kbd">Ctrl+D</span> demo</div>
-    <div style="height:18px"></div>
-    <div class="muted">Arquivos gerados no build: <a href="/extrato.html">extrato.html</a> • <a href="/extrato.pdf">extrato.pdf</a></div>
     <div style="height:24px"></div>
   </div>
 
@@ -385,11 +383,122 @@
     URL.revokeObjectURL(a.href);
   });
 
-  const pdfBtn = $('btnExportPdf');
-  if (pdfBtn) {
-    pdfBtn.addEventListener('click', ()=>{
-      window.open('/extrato.pdf', '_blank', 'noopener');
-    });
+  function buildHTMLFromCurrentState(){
+    const wrapCSS = `
+      <style>
+        @page { size: A4; margin: 16mm 12mm; }
+        body{margin:0;font:12px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,Inter,Arial,sans-serif;color:#141414;background:#fff}
+        .topbar{height:6px;background:#ff6e00;margin:0 0 8px 0;}
+        .wrap{max-width:820px;margin:0 auto}
+        header{display:flex;justify-content:space-between;align-items:center;padding:8px 0 12px;margin-bottom:4px}
+        .brand{font-weight:700} .brand b{color:#ff6e00}
+        .muted{color:#6a6a6a}
+        .card{border:1px solid #ededed;border-radius:8px;padding:10px;margin:8px 0}
+        .statement{padding-top:4px}
+        .head .hline{padding:2px 0}
+        .head .title{font-weight:600}
+        .money{font-variant-numeric: tabular-nums}
+        hr{border:0;border-top:1px solid #eaeaea;margin:6px 0}
+        .id{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+        .id .lbl{font-size:11px;color:#6a6a6a}
+        .id .val{font-size:13px}
+        .day{margin:8px 0 14px}
+        .line{display:flex;justify-content:space-between;gap:12px;padding:6px 0;border-bottom:1px dashed #e8e8e8;white-space:pre-wrap}
+        .line:last-child{border-bottom:0}
+        .desc{font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+        .vals{display:flex;gap:12px;min-width:200px;justify-content:flex-end;font-family: ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+        .header-dia{margin-top:6px;padding-top:6px;border-top:1px solid #e8e8e8;font-weight:600}
+        .day + .day { page-break-inside: avoid; }
+      </style>
+    `;
+
+    const titular = $('titular').value || '';
+    const doc = $('doc').value || '';
+    const conta = $('bancoConta').value || 'Banco Inter';
+    const p0 = $('periodStart').value;
+    const p1 = $('periodEnd').value;
+    const periodo = (p0 && p1) ? `${new Date(p0).toLocaleDateString('pt-BR')} a ${new Date(p1).toLocaleDateString('pt-BR')}` : '';
+
+    function saldoHeaderHTML(){
+      const t = $('saldoTotal').value;
+      if(!t){ return ''; }
+      const d = $('saldoDisp').value;
+      const b = $('saldoBloq').value;
+      const fmt = (n)=> Number(n || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'});
+      return `
+        <section class="head card">
+          <div class="hline title">Saldo total</div>
+          <div class="hline money">${fmt(t)}</div>
+          <div class="hline muted">(bloqueado + disponível)</div>
+          <hr/>
+          <div class="hline title">Saldo disponível:</div>
+          <div class="hline money">${fmt(d)}</div>
+          <hr/>
+          <div class="hline title">Saldo bloqueado:</div>
+          <div class="hline money">${fmt(b)}</div>
+        </section>
+      `;
+    }
+
+    const idBlock = `
+      <section class="id card">
+        <div><div class="lbl">Titular</div><div class="val">${titular}</div></div>
+        <div><div class="lbl">Documento</div><div class="val">${doc}</div></div>
+        <div><div class="lbl">Conta</div><div class="val">${conta}</div></div>
+        <div><div class="lbl">Período</div><div class="val">${periodo}</div></div>
+      </section>
+    `;
+
+    const statementHTML = $('statement').innerHTML;
+
+    return `
+      <!doctype html>
+      <html lang="pt-BR"><head><meta charset="utf-8"/><title>Extrato – Banco Inter</title><meta name="viewport" content="width=device-width, initial-scale=1"/>
+      ${wrapCSS}
+      </head><body>
+        <div class="topbar"></div>
+        <div class="wrap">
+          <header>
+            <div class="brand">Extrato <b>Inter</b></div>
+            <div class="muted">${new Date().toLocaleDateString('pt-BR')}</div>
+          </header>
+          ${idBlock}
+          ${saldoHeaderHTML()}
+          <main class="statement">${statementHTML}</main>
+        </div>
+      </body></html>
+    `;
+  }
+
+  async function downloadPDF(){
+    try {
+      const html = buildHTMLFromCurrentState();
+      const resp = await fetch('/api/pdf', {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/html; charset=utf-8' },
+        body: html
+      });
+      if(!resp.ok){
+        const errText = await resp.text();
+        alert('Falha ao gerar PDF:\n' + errText);
+        return;
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'extrato.pdf';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert('Erro inesperado ao gerar PDF');
+      console.error(err);
+    }
+  }
+
+  const btnPdf = $('btnPdf');
+  if(btnPdf){
+    btnPdf.addEventListener('click', downloadPDF);
   }
 
   // Demo atualizada
