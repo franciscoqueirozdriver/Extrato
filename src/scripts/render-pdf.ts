@@ -34,14 +34,24 @@ async function launchBrowser() {
 
 async function main() {
   const scenarioPath = arg('scenario', 'scenarios/inter-demo.yml');
+  const htmlPath = arg('html', '');
   const outPath = arg('out', 'public/extrato.pdf');
 
-  const scenario = loadScenario(scenarioPath);
-  if (scenario.bank !== 'INTER') {
-    bail('Apenas bank: INTER é suportado nesta versão.');
-  }
+  let html: string;
 
-  const html = renderScenarioToHTML(scenario);
+  if (htmlPath) {
+    try {
+      html = readFileSync(htmlPath, 'utf8');
+    } catch (err) {
+      bail(`Não foi possível ler o HTML em "${htmlPath}": ${(err as Error).message}`);
+    }
+  } else {
+    const scenario = loadScenario(scenarioPath);
+    if (scenario.bank !== 'INTER') {
+      bail('Apenas bank: INTER é suportado nesta versão.');
+    }
+    html = renderScenarioToHTML(scenario);
+  }
 
   const browser = await launchBrowser();
   const page = await browser.newPage();
