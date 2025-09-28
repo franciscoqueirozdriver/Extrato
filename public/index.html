@@ -50,6 +50,9 @@
     .statement .day{margin:6px 0 18px}
     .line{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px dashed var(--line);white-space:pre-wrap}
     .line:last-child{border-bottom:0}
+    /* rótulo do cabeçalho das colunas */
+    .line.head{border-bottom:1px solid var(--line);font-weight:600}
+    .line.head .desc{visibility:hidden}
     .desc{font-family:var(--mono)}
     .vals{display:flex;gap:12px;min-width:220px;justify-content:flex-end;font-family:var(--mono)}
     .header-dia{margin-top:8px;padding-top:6px;border-top:1px solid var(--line);font-weight:600}
@@ -291,7 +294,7 @@
   function render(){
     const el = $('statement'); el.innerHTML = '';
 
-    // Cabeçalho saldos (opcional)
+    // Cabeçalho dos saldos (seu bloco atual pode ficar igual)
     const saldoTotal = parseFloat($('saldoTotal').value);
     const saldoDisp  = parseFloat($('saldoDisp').value);
     const saldoBloq  = parseFloat($('saldoBloq').value);
@@ -308,24 +311,43 @@
       el.appendChild(hr());
     }
 
-    // Saldo global cumulativo entre dias
-    let global = parseFloat($('saldoInicial').value || '0') || 0;
+    // Linha de rótulos das colunas (Valor | Saldo por transação)
+    appendLine(el, { desc:'', vals:['Valor','Saldo por transação'] });
+    el.lastChild.classList.add('head');
 
+    // Saldo global encadeado entre dias
+    let global = parseFloat($('saldoInicial').value || '0') || 0;
     const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+
     state.days.sort((a,b)=> a.date.localeCompare(b.date));
+
     state.days.forEach(day=>{
+      // saldo do dia calculado ANTES (soma dos amounts do dia)
+      const daySum = day.entries.reduce((acc, tx)=> acc + Number(tx.amount||0), 0);
+      const dayEnd = global + daySum;
+
+      // cabeçalho do dia em cima
+      const header = document.createElement('div');
+      header.className = 'header-dia';
+      const d = new Date(day.date+'T12:00:00');
+      header.textContent = `${d.getUTCDate()} de ${meses[d.getUTCMonth()]} de ${d.getUTCFullYear()} Saldo do dia: ${fmtBRL(dayEnd)}`;
+
+      // linhas do dia (evolução transação a transação)
       const dayFrag = document.createDocumentFragment();
       day.entries.forEach(tx=>{
         global += Number(tx.amount || 0);
         const desc = renderDesc(tx);
-        appendLine(dayFrag, {desc, vals:[fmtBRL(Number(tx.amount || 0)), fmtBRL(global)], id: tx.id, type: tx.type});
+        appendLine(dayFrag, {
+          desc,
+          vals:[fmtBRL(Number(tx.amount || 0)), fmtBRL(global)],
+          id: tx.id,
+          type: tx.type
+        });
       });
-      const header = document.createElement('div');
-      header.className = 'header-dia';
-      const d = new Date(day.date+'T12:00:00');
-      header.textContent = `${d.getUTCDate()} de ${meses[d.getUTCMonth()]} de ${d.getUTCFullYear()} Saldo do dia: ${fmtBRL(global)}`;
+
       const dayBox = document.createElement('div'); dayBox.className='day';
-      dayBox.appendChild(dayFrag); dayBox.appendChild(header);
+      dayBox.appendChild(header);
+      dayBox.appendChild(dayFrag);
       el.appendChild(dayBox);
     });
   }
