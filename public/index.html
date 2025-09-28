@@ -82,19 +82,22 @@
           <input id="bancoConta" type="text" placeholder='Ex.: Banco Inter • Ag: 0001-9 • Conta: 4830868-4' />
         </div>
       </div>
-      <div class="section grid cols-2">
+
+      <div class="section grid cols-3">
         <div>
-          <h2>Período</h2>
-          <div class="row">
-            <input id="periodStart" type="date" />
-            <input id="periodEnd" type="date" />
-          </div>
+          <h2>Período – Início</h2>
+          <input id="periodStart" type="date" />
         </div>
         <div>
-          <h2 class="muted">Dica</h2>
-          <div class="muted">Você pode preencher saldos e ir adicionando transações; o simulador calcula o <span class="kbd">Saldo após</span> e imprime o cabeçalho <em>Saldo do dia</em> em cada bloco.</div>
+          <h2>Período – Fim</h2>
+          <input id="periodEnd" type="date" />
+        </div>
+        <div>
+          <h2>Saldo inicial (antes do período)</h2>
+          <input id="saldoInicial" type="number" step="0.01" placeholder="Ex.: 0.00" />
         </div>
       </div>
+
       <!-- Saldo total / disponível / bloqueado -->
       <div class="section grid cols-3">
         <div>
@@ -138,7 +141,7 @@
             </select>
           </div>
           <div>
-            <label>Valor (R$) — use negativo para débitos</label>
+            <label>Valor (R$) — negativo para débitos</label>
             <input id="txAmount" type="number" step="0.01" placeholder="-430.00" />
           </div>
         </div>
@@ -161,7 +164,7 @@
         <div class="row" style="margin-top:12px">
           <button class="btn primary" id="btnAdd">Adicionar</button>
           <button class="btn" id="btnNewDay">Fechar dia (gera “Saldo do dia”)</button>
-          <div class="muted" style="margin-left:auto">Formato textual seguirá o extrato original (descrição + valor + saldo).</div>
+          <div class="muted" style="margin-left:auto">Formato textual segue o extrato (descrição + valor + saldo).</div>
         </div>
       </div>
     </div>
@@ -172,7 +175,7 @@
     <div class="card">
       <div class="section">
         <h2>Prévia do extrato</h2>
-        <div class="muted">Abaixo: linhas geradas + cabeçalhos “Saldo do dia”.</div>
+        <div class="muted">Linhas geradas + cabeçalhos “Saldo do dia”.</div>
       </div>
       <div class="section statement" id="statement"></div>
     </div>
@@ -184,21 +187,17 @@
 
 <script>
 (function(){
-  // Estado básico
   const state = {
     days: [],  // [{date:'YYYY-MM-DD', entries:[{...}], saldoDia:number}]
-    runningBalance: null, // saldo após última linha do dia corrente
     lastDate: null
   };
 
-  // Helpers
   const $ = (id)=>document.getElementById(id);
   const fmtBRL = (v)=>{
-    // manter -R$ 0,00 quando necessário
     const n = Number(v);
     const negZero = (1/n === -Infinity);
     const sign = (n < 0 || negZero) ? '-' : '';
-    return sign + n.toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2,maximumFractionDigits:2}).replace('-', '');
+    return sign + Math.abs(n).toLocaleString('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2,maximumFractionDigits:2});
   };
   const caps = (s)=> (s||'').toUpperCase().trim();
   const trunc = (s, max=44)=> (s||'').length>max ? (s||'').slice(0,max).trim() : (s||'');
@@ -207,66 +206,53 @@
   function ensureDay(dateISO){
     let d = state.days.find(d=>d.date===dateISO);
     if(!d){ d = { date:dateISO, entries:[], saldoDia: null }; state.days.push(d); }
-    // mantém ordem por data
-    state.days.sort((a,b)=> a.date<b.date ? -1 : a.date>b.date ? 1 : 0);
+    state.days.sort((a,b)=> a.date.localeCompare(b.date));
     return d;
   }
 
   function addEntry(e){
     const d = ensureDay(e.date);
     d.entries.push(e);
-    // ordena por ordem de inserção (simulação simples)
   }
 
   function render(){
-    const el = $('statement');
-    el.innerHTML = '';
+    const el = $('statement'); el.innerHTML = '';
 
-    // Cabeçalho “Saldo total / disponível / bloqueado” (opcional) — mostra se total preenchido
+    // Cabeçalho saldos (opcional)
     const saldoTotal = parseFloat($('saldoTotal').value);
     const saldoDisp  = parseFloat($('saldoDisp').value);
     const saldoBloq  = parseFloat($('saldoBloq').value);
     if(!Number.isNaN(saldoTotal)){
       appendLine(el, {desc:'Saldo total', vals:[]});
-      appendLine(el, {desc: 'R$ ' + (saldoTotal||0).toFixed(2).replace('.',','), vals:[]});
+      appendLine(el, {desc:'R$ ' + (isNaN(saldoTotal)?0:saldoTotal).toFixed(2).replace('.',','), vals:[]});
       appendLine(el, {desc:'(bloqueado + disponível)', vals:[]});
       el.appendChild(hr());
       appendLine(el, {desc:'Saldo disponível:', vals:[]});
-      appendLine(el, {desc:'R$ ' + ((saldoDisp||0).toFixed(2)).replace('.',','), vals:[]});
+      appendLine(el, {desc:'R$ ' + (isNaN(saldoDisp)?0:saldoDisp).toFixed(2).replace('.',','), vals:[]});
       el.appendChild(hr());
       appendLine(el, {desc:'Saldo bloqueado:', vals:[]});
-      appendLine(el, {desc:'R$ ' + ((saldoBloq||0).toFixed(2)).replace('.',','), vals:[]});
+      appendLine(el, {desc:'R$ ' + (isNaN(saldoBloq)?0:saldoBloq).toFixed(2).replace('.',','), vals:[]});
       el.appendChild(hr());
     }
 
-    // Render dias e calcular saldos
+    // Saldo global cumulativo entre dias
+    let global = parseFloat($('saldoInicial').value || '0') || 0;
+
+    const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    state.days.sort((a,b)=> a.date.localeCompare(b.date));
     state.days.forEach(day=>{
-      let running = (state.lastDate && state.lastDate !== day.date) ? null : state.runningBalance;
-      // se não houver running, recalcula a partir do início do dia
-      if(running==null){
-        // Se o primeiro lançamento do dia já traz balanceAfter, usamos ele como base após aplicar amount.
-        // Mas para simulação, vamos usar encadeamento: running = soma cumulativa dentro do dia.
-        running = 0;
-      }
       const dayFrag = document.createDocumentFragment();
       day.entries.forEach(tx=>{
-        running = running + Number(tx.amount);
-        // Se o usuário informar balanceAfter manual? — respeitamos amount e mostramos running em tela
+        global += Number(tx.amount || 0);
         const desc = renderDesc(tx);
-        appendLine(dayFrag, {desc, vals:[fmtBRL(tx.amount), fmtBRL(running)]});
-        tx._balanceAfter = running; // persistimos para impressão do “Saldo do dia”
+        appendLine(dayFrag, {desc, vals:[fmtBRL(tx.amount), fmtBRL(global)]});
       });
-      // Cabeçalho “Saldo do dia”
       const header = document.createElement('div');
       header.className = 'header-dia';
       const d = new Date(day.date+'T12:00:00');
-      const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-      const headerTxt = `${d.getUTCDate()} de ${meses[d.getUTCMonth()]} de ${d.getUTCFullYear()} Saldo do dia: ${fmtBRL(day.entries.length? day.entries[day.entries.length-1]._balanceAfter : 0)}`;
-      header.textContent = headerTxt;
-      const dayBox = document.createElement('div');
-      dayBox.className = 'day';
-      dayBox.appendChild(dayFrag);
-      dayBox.appendChild(header);
+      header.textContent = `${d.getUTCDate()} de ${meses[d.getUTCMonth()]} de ${d.getUTCFullYear()} Saldo do dia: ${fmtBRL(global)}`;
+      const dayBox = document.createElement('div'); dayBox.className='day';
+      dayBox.appendChild(dayFrag); dayBox.appendChild(header);
       el.appendChild(dayBox);
     });
   }
@@ -289,8 +275,13 @@
         return `Rotativo Digital: "${(tx.name||'').toUpperCase()}"`;
       case 'CASHBACK':
         return `Cashback: "${tx.name||''}"`;
-      case 'COMPRA_DEBITO':
-        return `Compra no debito: "${tx.name||''}"`;
+      case 'COMPRA_DEBITO': {
+        const base = (tx.name||'').trim();
+        const rotulo = base.toLowerCase().startsWith('no estabelecimento')
+          ? base
+          : (base ? `No estabelecimento ${base}` : 'No estabelecimento');
+        return `Compra no debito: "${rotulo}"`;
+      }
       default:
         return tx.name||'';
     }
@@ -317,14 +308,13 @@
     const entry = { date, type, amount, name, obs };
 
     if(type.includes('_CP')){
-      entry.cp = ref.replace(/\s+/g,''); // “18236120”
+      entry.cp = ref.replace(/\s+/g,'');
     }else if(type.includes('_NOCP')){
-      // "00019 0127263594"
       const m = ref.match(/^(\d{5})\s+(\d{7,12})$/);
       entry.phonePrefix = m? m[1] : '00019';
       entry.phone = m? m[2] : (ref.replace(/\s+/g,''));
     }else if(type==='ROTATIVO'){
-      entry.name = name || 'BH'; // cidade em caps no render
+      entry.name = name || 'BH';
     }
 
     addEntry(entry);
@@ -334,18 +324,16 @@
 
   $('btnNewDay').addEventListener('click', ()=>{
     state.lastDate = null;
-    state.runningBalance = null;
-    render(); // fecha visualmente (cabeçalho do dia já imprime)
+    render(); // cabeçalho do dia será impresso com saldo global atual
   });
 
   $('btnClear').addEventListener('click', ()=>{
     state.days = [];
-    state.runningBalance = null;
     state.lastDate = null;
     $('statement').innerHTML='';
   });
 
-  // Export TXT (fidelidade textual)
+  // Export TXT
   $('btnExport').addEventListener('click', ()=>{
     const lines = [];
     const titular = $('titular').value.trim();
@@ -369,18 +357,20 @@
       lines.push('');
     }
 
+    // Export com saldo global encadeado
+    let global = parseFloat($('saldoInicial').value || '0') || 0;
+    const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+    state.days.sort((a,b)=> a.date.localeCompare(b.date));
     state.days.forEach(day=>{
-      let running = 0;
       day.entries.forEach(tx=>{
         const desc = renderDesc(tx);
-        running += Number(tx.amount||0);
+        global += Number(tx.amount||0);
         const amount = fmtBRL(tx.amount||0);
-        const bal = fmtBRL(running);
+        const bal = fmtBRL(global);
         lines.push(`${desc} ${amount} ${bal}`);
       });
       const dt = new Date(day.date+'T12:00:00');
-      const meses = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
-      lines.push(`${dt.getUTCDate()} de ${meses[dt.getUTCMonth()]} de ${dt.getUTCFullYear()} Saldo do dia: ${fmtBRL(running)}`);
+      lines.push(`${dt.getUTCDate()} de ${meses[dt.getUTCMonth()]} de ${dt.getUTCFullYear()} Saldo do dia: ${fmtBRL(global)}`);
       lines.push('');
     });
 
@@ -392,13 +382,14 @@
     URL.revokeObjectURL(a.href);
   });
 
-  // Demo rápida (os mesmos padrões dos teus extratos)
+  // Demo atualizada
   $('btnLoadDemo').addEventListener('click', ()=>{
     $('titular').value = 'ALESSANDRA ALVES DE BRITO';
     $('doc').value = '115.574.766-67';
     $('bancoConta').value = 'Banco Inter • Ag: 0001-9 • Conta: 4830868-4';
     $('periodStart').value = '2024-08-06';
     $('periodEnd').value = '2024-08-09';
+    $('saldoInicial').value = '0.00';
     $('saldoTotal').value = '104.90';
     $('saldoDisp').value = '104.90';
     $('saldoBloq').value = '0.00';
@@ -419,7 +410,6 @@
     if(e.ctrlKey && e.key.toLowerCase()==='d'){ e.preventDefault(); $('btnLoadDemo').click(); }
   });
 
-  // Render inicial
   render();
 })();
 </script>
