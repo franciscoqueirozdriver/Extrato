@@ -2,7 +2,7 @@ import type { VercelRequest, VercelResponse } from '@vercel/node';
 import chromium from '@sparticuz/chromium';
 import puppeteer from 'puppeteer-core';
 
-async function readRawBody(req: VercelRequest): Promise<string> {
+async function readRaw(req: VercelRequest): Promise<string> {
   return new Promise((resolve, reject) => {
     let data = '';
     req.setEncoding('utf8');
@@ -17,7 +17,7 @@ async function readRawBody(req: VercelRequest): Promise<string> {
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
     if (req.method !== 'POST') {
-      return res.status(405).json({ error: 'Use POST com { html }' });
+      return res.status(405).json({ error: 'Use POST com {html}' });
     }
 
     const ctype = String(req.headers['content-type'] || '').toLowerCase();
@@ -25,28 +25,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     if (ctype.includes('application/json')) {
       const body = (req.body ?? {}) as any;
-      html = typeof body?.html === 'string' ? body.html : '';
-    } else if (ctype.includes('text/html') || ctype.includes('text/plain')) {
-      html = await readRawBody(req);
-    } else {
-      const body = (req.body ?? {}) as any;
       if (typeof body?.html === 'string') {
         html = body.html;
-      } else {
-        html = await readRawBody(req);
       }
+    } else {
+      html = await readRaw(req);
     }
 
-    if (!html || typeof html !== 'string' || html.length < 20) {
+    if (!html || html.length < 20) {
       return res.status(400).json({ error: 'HTML ausente' });
     }
 
-    const executablePath = await chromium.executablePath();
+    chromium.setHeadlessMode = true;
+    chromium.setGraphicsMode = false;
 
     const browser = await puppeteer.launch({
-      args: chromium.args,
+      args: [...chromium.args, '--no-sandbox', '--disable-setuid-sandbox'],
       defaultViewport: chromium.defaultViewport,
-      executablePath,
+      executablePath: await chromium.executablePath(),
       headless: chromium.headless
     });
 
