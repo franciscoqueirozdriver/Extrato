@@ -80,8 +80,10 @@
     <div class="bar">
       <div class="brand">Simulador de Extrato <strong>Inter</strong></div>
       <div class="stack">
+        <input id="fileTXT" type="file" accept=".txt,text/plain" style="display:none" />
         <button class="btn" id="btnLoadDemo">Carregar demo</button>
         <button class="btn" id="btnClear">Limpar</button>
+        <button class="btn" id="btnImportTXT">Importar .TXT</button>
         <button class="btn primary" id="btnPdf">Baixar PDF</button>
         <button class="btn" id="btnPrint">Baixar PDF (navegador)</button>
         <button class="btn" id="btnExport">Exportar TXT</button>
@@ -393,6 +395,184 @@
     }
   }
 
+  // --- Importador de TXT "exportado pelo app" ---
+  // Referência de formato: Período, blocos de saldos e linhas com "Saldo do dia" após as transações.
+  // :contentReference[oaicite:1]{index=1}
+  function parseExportedTXT(text){
+    const raw = text.split(/\r?\n/).map(s => s.trim());
+    const lines = raw.filter(Boolean);
+
+    const meses = ['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+    const monthIndex = Object.fromEntries(meses.map((m,i)=>[m,i]));
+
+    const parseBRL = (s)=>{
+      s = String(s||'');
+      const neg = /^-/.test(s.trim());
+      const sanitized = s.replace(/[^\d,.-]/g,'').replace(/\./g,'').replace(',', '.');
+      const value = parseFloat(sanitized.replace(/^-/,'')) || 0;
+      return neg ? -value : value;
+    };
+
+    const dateFromHeader = (line)=>{
+      const m = line.match(/^(\d{1,2}) de ([A-Za-zçãéóíú]+) de (\d{4})\s+Saldo do dia:/i);
+      if(!m) return null;
+      const day = m[1].padStart(2,'0');
+      const mesIdx = monthIndex[m[2].toLowerCase()];
+      if(mesIdx == null) return null;
+      const month = String(mesIdx + 1).padStart(2,'0');
+      return `${m[3]}-${month}-${day}`;
+    };
+
+    const RX = {
+      pixCp: /^(Pix (enviado|recebido)):\s*"Cp\s*:(\d{1,12})-([^\"]+)"\s+(-?R\$\s*[\d\.,]+)\s+(-?R\$\s*[\d\.,]+)$/i,
+      pixPhone: /^(Pix (enviado|recebido)):\s*"(\d{5})\s+(\d{7,12})\s+([^\"]+)"\s+(-?R\$\s*[\d\.,]+)\s+(-?R\$\s*[\d\.,]+)$/i,
+      pagamentoEfetuado: /^(Pagamento efetuado):\s*"([^\"]+)"\s+(-?R\$\s*[\d\.,]+)\s+(-?R\$\s*[\d\.,]+)$/i,
+      pagamento: /^Pagamento\s+(-?R\$\s*[\d\.,]+)\s+(-?R\$\s*[\d\.,]+)$/i,
+      rotativo: /^(Rotativo Digital):\s*"([^\"]+)"\s+(-?R\$\s*[\d\.,]+)\s+(-?R\$\s*[\d\.,]+)$/i,
+      cashback: /^(Cashback):\s*"([^\"]+)"\s+(R\$\s*[\d\.,]+)\s+(-?R\$\s*[\d\.,]+)$/i,
+      compraDebito: /^(Compra no debito):\s*"([^\"]+)"\s+(-?R\$\s*[\d\.,]+)\s+(-?R\$\s*[\d\.,]+)$/i,
+      headerDia: /^\d{1,2} de [A-Za-zçãéóíú]+ de \d{4}\s+Saldo do dia:\s+-?R\$\s*[\d\.,]+$/i
+    };
+
+    const scenario = {
+      header: {},
+      saldo_total: {},
+      openingBalance: 0,
+      days: []
+    };
+
+    // Cabeçalho textual (titular / documento / conta) até encontrar linha técnica
+    for (const line of lines){
+      if(/^Per[ií]odo:/i.test(line) || /^Saldo total$/i.test(line) || /^Pix /i.test(line) || /^Pagamento/i.test(line) || /^Rotativo/i.test(line) || /^Cashback/i.test(line) || /^Compra no debito/i.test(line)){
+        break;
+      }
+      if(!scenario.header.titular){
+        scenario.header.titular = line;
+        continue;
+      }
+      if(!scenario.header.documento){
+        if(line.includes('•')){
+          const parts = line.split('•').map(p=>p.trim()).filter(Boolean);
+          if(parts.length){
+            scenario.header.documento = parts.shift();
+            if(parts.length){
+              scenario.header.conta = parts.join(' • ');
+            }
+            continue;
+          }
+        }
+        scenario.header.documento = line;
+        continue;
+      }
+      if(!scenario.header.conta){
+        scenario.header.conta = line;
+      }
+    }
+
+    const periodoIdx = lines.findIndex(l => /^Per[ií]odo:/i.test(l));
+    if(periodoIdx >= 0){
+      const match = lines[periodoIdx].match(/^Per[ií]odo:\s*(\d{2}\/\d{2}\/\d{4})\s*a\s*(\d{2}\/\d{2}\/\d{4})/i);
+      if(match){
+        const toISO = (s)=> s.split('/').reverse().join('-');
+        scenario.header.periodoInicio = toISO(match[1]);
+        scenario.header.periodoFim = toISO(match[2]);
+      }
+    }
+
+    for(let i = 0; i < lines.length; i++){
+      if(/^Saldo total$/i.test(lines[i]) && lines[i+1]){
+        scenario.saldo_total.total = parseBRL(lines[i+1]);
+      }
+      if(/^Saldo dispon[ií]vel:$/i.test(lines[i]) && lines[i+1]){
+        scenario.saldo_total.disponivel = parseBRL(lines[i+1]);
+      }
+      if(/^Saldo bloqueado:$/i.test(lines[i]) && lines[i+1]){
+        scenario.saldo_total.bloqueado = parseBRL(lines[i+1]);
+      }
+    }
+
+    let buffer = [];
+    const flushDay = (dateISO)=>{
+      if(!dateISO || !buffer.length) {
+        buffer = [];
+        return;
+      }
+      scenario.days.push({ date: dateISO, entries: buffer.slice() });
+      buffer = [];
+    };
+
+    for(const line of lines){
+      if(RX.headerDia.test(line)){
+        flushDay(dateFromHeader(line));
+        continue;
+      }
+
+      let match;
+      if(match = line.match(RX.pixCp)){
+        const type = match[2].toUpperCase() === 'ENVIADO' ? 'PIX_ENVIADO_CP' : 'PIX_RECEBIDO_CP';
+        const amount = normalizeAmount(type, parseBRL(match[5]));
+        buffer.push({ id: genId(), date: '1900-01-01', type, amount, balanceAfter: parseBRL(match[6]), cp: match[3].trim(), name: match[4].trim() });
+        continue;
+      }
+      if(match = line.match(RX.pixPhone)){
+        const type = match[2].toUpperCase() === 'ENVIADO' ? 'PIX_ENVIADO_NOCP' : 'PIX_RECEBIDO_NOCP';
+        const amount = normalizeAmount(type, parseBRL(match[6]));
+        buffer.push({ id: genId(), date: '1900-01-01', type, amount, balanceAfter: parseBRL(match[7]), phonePrefix: match[3].trim(), phone: match[4].trim(), name: match[5].trim() });
+        continue;
+      }
+      if(match = line.match(RX.pagamentoEfetuado)){
+        const amount = normalizeAmount('PAGAMENTO_EFETUADO', parseBRL(match[3]));
+        buffer.push({ id: genId(), date: '1900-01-01', type: 'PAGAMENTO_EFETUADO', amount, balanceAfter: parseBRL(match[4]), name: match[2].trim() });
+        continue;
+      }
+      if(match = line.match(RX.pagamento)){
+        const amount = normalizeAmount('PAGAMENTO', parseBRL(match[1]));
+        buffer.push({ id: genId(), date: '1900-01-01', type: 'PAGAMENTO', amount, balanceAfter: parseBRL(match[2]) });
+        continue;
+      }
+      if(match = line.match(RX.rotativo)){
+        const amount = normalizeAmount('ROTATIVO', parseBRL(match[3]));
+        buffer.push({ id: genId(), date: '1900-01-01', type: 'ROTATIVO', amount, balanceAfter: parseBRL(match[4]), name: match[2].trim() });
+        continue;
+      }
+      if(match = line.match(RX.cashback)){
+        const amount = parseBRL(match[3]);
+        buffer.push({ id: genId(), date: '1900-01-01', type: 'CASHBACK', amount, balanceAfter: parseBRL(match[4]), name: match[2].trim() });
+        continue;
+      }
+      if(match = line.match(RX.compraDebito)){
+        const amount = normalizeAmount('COMPRA_DEBITO', parseBRL(match[3]));
+        buffer.push({ id: genId(), date: '1900-01-01', type: 'COMPRA_DEBITO', amount, balanceAfter: parseBRL(match[4]), name: match[2].trim() });
+        continue;
+      }
+    }
+
+    if(buffer.length){
+      const fallbackDate = scenario.header.periodoFim || new Date().toISOString().slice(0,10);
+      flushDay(fallbackDate);
+    }
+
+    scenario.days.forEach(day => {
+      day.entries.forEach(entry => {
+        entry.date = day.date;
+      });
+    });
+
+    scenario.days.sort((a,b)=> a.date.localeCompare(b.date));
+
+    if(scenario.days.length){
+      const firstDay = scenario.days[0];
+      if(firstDay.entries.length){
+        const firstEntry = firstDay.entries[0];
+        if(typeof firstEntry.balanceAfter === 'number'){
+          scenario.openingBalance = Number((firstEntry.balanceAfter || 0) - (firstEntry.amount || 0));
+        }
+      }
+    }
+
+    return scenario;
+  }
+
   function appendLine(parent,{desc,vals=[],id,type}){
     const row = document.createElement('div'); row.className='line';
     if(id) row.dataset.id = id;
@@ -480,6 +660,44 @@
     state.lastDate = null;
     $('statement').innerHTML='';
     closeEditModal();
+  });
+
+  $('btnImportTXT').addEventListener('click', ()=> $('fileTXT').click());
+  $('fileTXT').addEventListener('change', async (event)=>{
+    const file = event.target.files?.[0];
+    if(!file) return;
+    try {
+      const text = await file.text();
+      const sc = parseExportedTXT(text);
+
+      $('titular').value = typeof sc.header?.titular === 'string' ? sc.header.titular : '';
+      $('doc').value = typeof sc.header?.documento === 'string' ? sc.header.documento : '';
+      $('bancoConta').value = typeof sc.header?.conta === 'string' ? sc.header.conta : '';
+      $('periodStart').value = typeof sc.header?.periodoInicio === 'string' ? sc.header.periodoInicio : '';
+      $('periodEnd').value = typeof sc.header?.periodoFim === 'string' ? sc.header.periodoFim : '';
+
+      $('saldoTotal').value = sc.saldo_total?.total != null ? String(sc.saldo_total.total) : '';
+      $('saldoDisp').value = sc.saldo_total?.disponivel != null ? String(sc.saldo_total.disponivel) : '';
+      $('saldoBloq').value = sc.saldo_total?.bloqueado != null ? String(sc.saldo_total.bloqueado) : '';
+
+      $('saldoInicial').value = (typeof sc.openingBalance === 'number' && !Number.isNaN(sc.openingBalance))
+        ? sc.openingBalance.toFixed(2)
+        : '';
+
+      state.days = [];
+      state.lastDate = null;
+      closeEditModal();
+      sc.days.sort((a,b)=> a.date.localeCompare(b.date)).forEach(day => {
+        day.entries.forEach(tx => addEntry({...tx}));
+      });
+
+      render();
+    } catch (err) {
+      alert('Falha ao importar TXT. Verifique o formato gerado pelo exportador.');
+      console.error(err);
+    } finally {
+      event.target.value = '';
+    }
   });
 
   function fillEditForm(e){
