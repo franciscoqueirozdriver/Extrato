@@ -63,6 +63,16 @@
       .grid.cols-3{grid-template-columns:1fr}
       .vals{min-width:auto}
     }
+    @media print {
+      body { background:#fff; }
+      .bar, .kbd, .btn, .modal, .muted:has(.kbd) { display:none !important; }
+      .card { border:none; box-shadow:none; }
+      .topbar { height:6px; background:#ff6e00; margin:0 0 8mm 0; }
+      .wrap { max-width:none; margin:0 12mm; }
+      .line { border-bottom:1px solid #e8e8e8; }
+      .header-dia { page-break-inside: avoid; }
+      .day { page-break-inside: avoid; margin-bottom:6mm; }
+    }
   </style>
 </head>
 <body>
@@ -73,6 +83,7 @@
         <button class="btn" id="btnLoadDemo">Carregar demo</button>
         <button class="btn" id="btnClear">Limpar</button>
         <button class="btn primary" id="btnPdf">Baixar PDF</button>
+        <button class="btn" id="btnPrint">Baixar PDF (navegador)</button>
         <button class="btn" id="btnExport">Exportar TXT</button>
       </div>
     </div>
@@ -779,6 +790,14 @@
       closeEditModal();
     }
   });
+
+  const btnPrint = $('btnPrint');
+  if(btnPrint){
+    btnPrint.addEventListener('click', ()=>{
+      render();
+      window.print();
+    });
+  }
 
   render();
 })();
