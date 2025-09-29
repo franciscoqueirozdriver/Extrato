@@ -1,12 +1,5 @@
 {
   "version": 2,
   "buildCommand": "npm run build && node dist/cli.js --scenario scenarios/inter-demo.yml --out public/extrato.txt && npm run render:html",
-  "outputDirectory": "public",
-  "functions": {
-    "api/**/*": {
-      "runtime": "nodejs18.x",
-      "memory": 1024,
-      "maxDuration": 60
-    }
-  }
+  "outputDirectory": "public"
 }
