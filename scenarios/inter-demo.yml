@@ -2,6 +2,13 @@
 
 version: 3
 bank: INTER
+openingBalance: 0
+header:
+  titular: "ALESSANDRA ALVES DE BRITO"
+  documento: "115.574.766-67"
+  conta: "Banco Inter • Ag: 0001-9 • Conta: 4830868-4"
+  periodoInicio: "2024-08-06"
+  periodoFim: "2024-08-09"
 saldo_total:
   total: 104.90
   disponivel: 104.90

@@ -1,4 +1,3 @@
-
 export type Direction = 'ENVIADO'|'RECEBIDO'|'NEUTRO';
 
 export type EntryType =
@@ -14,22 +13,20 @@ export type EntryType =
 
 export interface Transaction {
   type: EntryType;
-  // valores em BRL (positivo crédito, negativo débito)
-  amount: number;
-  balanceAfter: number; // saldo após a operação
-  // campos específicos:
-  cpCode?: string;             // Pix com Cp
-  counterparty?: string;       // nome do favorecido/origem
-  phonePrefix?: string;        // 00019
-  phone?: string;              // 0127263594
-  freeText?: string;           // descrições livres
-  city?: string;               // "BH" (Rotativo)
+  amount: number;           // +crédito / -débito
+  balanceAfter?: number;    // opcional no cenário
+  cpCode?: string;
+  counterparty?: string;
+  phonePrefix?: string;
+  phone?: string;
+  freeText?: string;
+  city?: string;
 }
 
 export interface DayBlock {
   date: string; // YYYY-MM-DD
   entries: Transaction[];
-  saldo_dia?: number; // saldo final mostrado no cabeçalho do dia
+  saldo_dia?: number;
 }
 
 export interface SaldoTotal {
@@ -38,11 +35,19 @@ export interface SaldoTotal {
   bloqueado: number;
 }
 
+export interface HeaderInfo {
+  titular?: string;         // "ALESSANDRA ALVES DE BRITO"
+  documento?: string;       // "115.574.766-67"
+  conta?: string;           // "Banco Inter • Ag: 0001-9 • Conta: 4830868-4"
+  periodoInicio?: string;   // "2024-08-06"
+  periodoFim?: string;      // "2024-08-09"
+}
+
 export interface Scenario {
   version: number;
   bank: 'INTER';
-  openingBalance?: number; // opcional; usamos o saldo_dia do primeiro dia como verdade de exibição
+  openingBalance?: number;
   saldo_total?: SaldoTotal;
+  header?: HeaderInfo;      // <<< novo
   days: DayBlock[];
 }
-
